@@ -1,0 +1,13 @@
+sqlalchemy
+pymysql
+pandas
+python-dotenv
+
+langchain-core
+langchain-community
+langchain-huggingface
+langchain-text-splitters
+sentence-transformers
+faiss-cpu
+pypdf
+openpyxl

@@ -1,0 +1,19 @@
+{
+  "config": {
+    "model": "sentence-transformers/all-MiniLM-L6-v2",
+    "chunk_size": 600,
+    "chunk_overlap": 80,
+    "cache_version": 1
+  },
+  "files": {
+    "Cold_Chain_Incident_SOP_v2.md": {
+      "sha256": "a920645b4af242a8de35430a3bf93e1d64eacd6346d2a46916ae874799afd9b0",
+      "ids": [
+        "4daa5169b3ff4f667123-chunk-0",
+        "4daa5169b3ff4f667123-chunk-1",
+        "4daa5169b3ff4f667123-chunk-2",
+        "4daa5169b3ff4f667123-chunk-3"
+      ]
+    }
+  }
+}
