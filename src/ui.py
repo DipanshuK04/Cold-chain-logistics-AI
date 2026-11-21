@@ -2,6 +2,8 @@ import os
 import uuid
 import json
 from pathlib import Path
+import pandas as pd
+import hmac
 
 import streamlit as st
 from dotenv import load_dotenv
@@ -52,7 +54,23 @@ def get_audit_engine():
         database=os.environ["AGENT_DB_NAME"],
     )
     return create_engine(db_url, pool_pre_ping=True, pool_recycle=1800)
+@st.cache_resource(show_spinner=False)
+def get_audit_read_engine():
 
+    db_url = URL.create(
+        drivername="mysql+pymysql",
+        username=os.environ["AUDIT_DB_USER"],
+        password=os.environ["AUDIT_DB_PASSWORD"],
+        host=os.getenv("AUDIT_DB_HOST", "localhost"),
+        port=int(os.getenv("AUDIT_DB_PORT", "3306")),
+        database=os.environ["AGENT_DB_NAME"],
+    )
+
+    return create_engine(
+        db_url,
+        pool_pre_ping=True,
+        pool_recycle=1800
+    )
 
 def write_audit_log(session_id, node_name, tool_name, content):
     """Insert one agent event into fde_views.AgentAuditLog."""
@@ -75,7 +93,131 @@ def write_audit_log(session_id, node_name, tool_name, content):
     except Exception as exc:
         # Audit failure should not prevent the agent from answering.
         print(f"Audit logging failed: {exc}")
+def show_audit_dashboard():
 
+    st.title("🛡️ Agent Audit Dashboard")
+
+    st.caption(
+        "Monitor agent execution, tool activity and conversation history."
+    )
+
+    # Session ID filter
+    session_filter = st.text_input(
+        "Filter by Session ID",
+        placeholder="Enter a session ID or leave empty"
+    )
+
+    try:
+        with get_audit_read_engine().connect() as conn:
+
+            query = """
+                SELECT
+                    SessionID,
+                    NodeExecuted,
+                    ToolName,
+                    Content
+                FROM fde_views.AgentAuditLog
+            """
+
+            params = {}
+
+            if session_filter.strip():
+                query += " WHERE SessionID = :session_id"
+                params["session_id"] = session_filter.strip()
+
+            query += " LIMIT 500"
+
+            result = conn.execute(
+                text(query),
+                params
+            )
+
+            records = result.mappings().all()
+
+            df = pd.DataFrame(records)
+
+            if df.empty:
+                st.info("No audit records found.")
+
+            else:
+
+                # Metrics
+                col1, col2, col3 = st.columns(3)
+
+                col1.metric("Total Events", len(df))
+
+                col2.metric(
+                    "Tool Executions",
+                    (df["NodeExecuted"] == "tools").sum()
+                )
+
+                col3.metric(
+                    "Unique Sessions",
+                    df["SessionID"].nunique()
+                )
+
+                st.divider()
+
+                # Audit records
+                st.subheader("Audit Records")
+
+                st.dataframe(
+                    df,
+                    use_container_width=True,
+                    hide_index=True
+                )
+
+                # Detailed inspection
+                st.subheader("Inspect Individual Event")
+
+                selected_index = st.selectbox(
+                    "Select an audit record",
+                    range(len(df)),
+                    format_func=lambda i: (
+                        f"{df.iloc[i]['NodeExecuted']} | "
+                        f"{df.iloc[i]['ToolName']} | "
+                        f"{df.iloc[i]['SessionID']}"
+                    )
+                )
+
+                selected_record = df.iloc[selected_index]
+
+                st.json({
+                    "SessionID": selected_record["SessionID"],
+                    "NodeExecuted": selected_record["NodeExecuted"],
+                    "ToolName": selected_record["ToolName"],
+                    "Content": selected_record["Content"]
+                })
+
+    except Exception as exc:
+        st.error(f"Unable to load audit records: {exc}")
+def authenticate_admin():
+
+    if "audit_authenticated" not in st.session_state:
+        st.session_state.audit_authenticated = False
+
+    if st.session_state.audit_authenticated:
+        return True
+
+    st.title("Admin Authentication")
+    st.caption("Restricted access to agent audit records.")
+
+    password = st.text_input(
+        "Admin Password",
+        type="password"
+    )
+
+    if st.button("Login", use_container_width=True):
+
+        expected_password = os.environ["AUDIT_ADMIN_PASSWORD"]
+
+        if hmac.compare_digest(password, expected_password):
+            st.session_state.audit_authenticated = True
+            st.rerun()
+        else:
+            st.error("Invalid admin password.")
+
+    return st.session_state.audit_authenticated
 
 # 4. SESSION STATE
 if "thread_id" not in st.session_state:
@@ -93,8 +235,12 @@ thread_config = {
 with st.sidebar:
     st.title("🧊 Cold Chain FDE")
     st.caption("Logistics Intelligence Agent")
+    page = st.radio(
+        "Navigation",
+        ["Chat Assistant", "Audit Dashboard"]
+    )
     st.divider()
-
+    
     st.caption("SESSION")
     st.code(st.session_state.thread_id[:8] + "...")
 
@@ -102,9 +248,23 @@ with st.sidebar:
         st.session_state.thread_id = str(uuid.uuid4())
         st.session_state.messages = []
         st.rerun()
+    
+
+if page == "Audit Dashboard":
+
+    if authenticate_admin():
+
+        st.sidebar.success("Admin authenticated")
+
+        if st.sidebar.button("Logout"):
+            st.session_state.audit_authenticated = False
+            st.rerun()
+
+        show_audit_dashboard()
+
+    st.stop()
 
 
-# 6. CHAT UI
 st.title("Cold Chain Logistics Assistant")
 st.caption(
     "Ask about fleet telemetry, corridor weather, delivery risks, "
