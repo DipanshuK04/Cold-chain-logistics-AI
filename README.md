@@ -266,7 +266,7 @@ Use **Chat Assistant** for questions and **Audit Dashboard** (admin password req
 
 
 
-[LinkedIn](www.linkedin.com/in/dipanshu-katole-95200b27b)
+[LinkedIn](https://www.linkedin.com/in/dipanshu-katole-95200b27b/)
 
 ---
 
